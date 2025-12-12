@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AntiGPT 2.0 — Home</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 32px; line-height: 1.6; }
+    a.btn { display:inline-block; padding:10px 16px; border-radius:6px; background:#2b6cb0; color:white; text-decoration:none; margin-right:8px; }
+    a.btn-outline { border:1px solid #2b6cb0; color:#2b6cb0; background:transparent; }
+    .container { max-width:900px; margin:0 auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Welcome to AntiGPT 2.0</h1>
+    <p>A simple RAG chat app (Django backend + frontend). Use the links below to get started:</p>
+
+    <p>
+      <a class="btn" href="/signup/">Signup</a>
+      <a class="btn btn-outline" href="/login/">Login</a>
+      <a class="btn btn-outline" href="/chat/">Open Chat</a>
+    </p>
+
+    <hr>
+    <h3>Notes</h3>
+    <ul>
+      <li><strong>Signup/Login</strong> use Django auth (session cookie).</li>
+      <li><strong>Chat</strong> requires login; you will be redirected to /login/ if not authenticated.</li>
+      <li><strong>API</strong> remains at <code>/api/</code> for documents/threads endpoints.</li>
+    </ul>
+  </div>
+</body>
+</html>

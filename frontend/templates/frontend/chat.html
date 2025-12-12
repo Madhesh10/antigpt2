@@ -1,0 +1,293 @@
+﻿{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AntiGPT 2.0 — Chat</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background:#f7f7f7; }
+    #container { display:flex; gap:24px; align-items:flex-start; }
+    #left { width:300px; }
+    #threads { min-height:120px; border:1px solid #ddd; background:#fff; padding:12px; overflow:auto }
+    #chat { flex:1; }
+    #chatWindow { min-height:300px; border:1px solid #ccc; padding:12px; background:#fff; overflow:auto }
+    .message.bot { color: #0a0; margin:6px 0; }
+    .message.user { color: #007; margin:6px 0; }
+    button { margin-top:8px }
+    label { display:block; margin-top:8px }
+  </style>
+</head>
+<body>
+  <p><a href="/logout/">Logout</a></p>
+  <h1>AntiGPT 2.0 — Chat</h1>
+
+  <div id="container">
+    <div id="left">
+      <h3>Threads</h3>
+      <div id="threads">Loading threads...</div>
+
+      <hr>
+
+      <h3>Upload Document</h3>
+
+      <!-- Single upload form (AJAX + fallback). Keep csrf_token for fallback submit. -->
+      <form id="uploadForm" method="post" enctype="multipart/form-data" action="/api/documents/">
+        {% csrf_token %}
+        <label>Title
+          <input id="titleInput" name="title" placeholder="Title (optional)" value="na">
+        </label>
+        <label>File
+          <input id="fileInput" name="file" type="file" accept=".pdf,.txt,.docx">
+        </label>
+
+        <!-- Single Upload button -->
+        <button id="uploadBtn" type="button">Upload</button>
+
+        <div id="uploadStatus" style="margin-top:8px;color:#a00"></div>
+      </form>
+    </div>
+
+    <div id="chat">
+      <div id="chatWindow">Select a thread to view messages.</div>
+
+      <div style="margin-top:12px;">
+        <textarea id="question" rows="4" style="width:70%" placeholder="Type your question..."></textarea>
+        <br>
+        <button id="askBtn">Ask</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // ---------- helper: read cookie ----------
+  function getCookie(name){
+    if(!document.cookie) return null;
+    const cookies = document.cookie.split(';').map(c => c.trim());
+    for(const c of cookies){
+      if(c.startsWith(name + '=')) return decodeURIComponent(c.split('=')[1]);
+    }
+    return null;
+  }
+
+  // CSRF token from cookie (Django sets it on page render)
+  const csrftoken = getCookie('csrftoken');
+
+  // fetch options we'll reuse (sends session cookie)
+  const fetchBase = { credentials: 'same-origin', headers: {} };
+  if(csrftoken) fetchBase.headers['X-CSRFToken'] = csrftoken;
+
+  // ---------- load thread list ----------
+  async function loadThreads(){
+    try {
+      console.debug("loadThreads: fetching /api/threads/");
+      const res = await fetch('/api/threads/', fetchBase);
+      if(!res.ok){
+        console.error("loadThreads: non-OK", res.status);
+        document.getElementById('threads').innerText = "Failed to load threads (" + res.status + ")";
+        return;
+      }
+      const data = await res.json();
+      const node = document.getElementById('threads');
+      if(!node){ console.error("loadThreads: #threads element not found"); return; }
+      node.innerHTML = '';
+
+      // add new-thread button
+      const btn = document.createElement('div');
+      btn.innerHTML = '<button id="newThreadBtn">+ New Thread</button>';
+      node.appendChild(btn);
+      document.getElementById('newThreadBtn').addEventListener('click', promptCreateThread);
+
+      if(!Array.isArray(data) || data.length === 0){
+        const empty = document.createElement('div');
+        empty.textContent = '(no threads)';
+        node.appendChild(empty);
+        return;
+      }
+
+      data.forEach(t => {
+        const el = document.createElement('div');
+        el.innerHTML = `<a href="#" data-id="${t.id}" class="thread-link">${t.title || 'Thread #' + t.id}</a>`;
+        node.appendChild(el);
+      });
+
+      // attach click handlers
+      document.querySelectorAll('.thread-link').forEach(a=>{
+        a.addEventListener('click', function(e){
+          e.preventDefault();
+          const id = this.getAttribute('data-id');
+          selectThread(id);
+        });
+      });
+
+    } catch (err) {
+      console.error("loadThreads error", err);
+      document.getElementById('threads').innerText = "Error loading threads";
+    }
+  }
+
+  // ---------- create thread ----------
+  function promptCreateThread(){
+    const title = prompt("Enter thread title (or leave blank):");
+    if(title === null) return;
+    createThread(title);
+  }
+
+  async function createThread(title){
+    try {
+      const payload = { title: title || "" };
+      const res = await fetch('/api/threads/', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type':'application/json', 'X-CSRFToken': csrftoken || '' },
+        body: JSON.stringify(payload)
+      });
+      if(!res.ok){
+        const txt = await res.text();
+        alert("Failed creating thread: " + res.status + " - " + txt);
+        return null;
+      }
+      const thread = await res.json();
+      await loadThreads();
+      selectThread(thread.id);
+      return thread;
+    } catch (err){
+      console.error("createThread error", err);
+      alert("Error creating thread");
+      return null;
+    }
+  }
+
+  // ---------- select thread ----------
+  let currentThread = null;
+  async function selectThread(id){
+    try {
+      currentThread = id;
+      const res = await fetch(`/api/threads/${id}/`, fetchBase);
+      if(!res.ok){
+        console.error("selectThread failed", res.status);
+        document.getElementById('chatWindow').innerText = "Failed to load messages";
+        return;
+      }
+      const data = await res.json();
+      const w = document.getElementById('chatWindow');
+      if(!w){ console.error("selectThread: #chatWindow missing"); return; }
+      w.innerHTML = '';
+      (data.messages || []).forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'message ' + (m.is_bot ? 'bot' : 'user');
+        div.textContent = (m.is_bot ? 'AI: ' : 'You: ') + m.content;
+        w.appendChild(div);
+      });
+    } catch(err){
+      console.error("selectThread error", err);
+      document.getElementById('chatWindow').innerText = "Error loading thread";
+    }
+  }
+
+  // ---------- ask question ----------
+  async function askQuestion(){
+    const q = document.getElementById('question').value.trim();
+    if(!q){ alert("Please type a question."); return; }
+    if(!currentThread){
+      const threadTitle = prompt("No thread selected — create thread now? Enter title (or leave blank):");
+      if(threadTitle === null) return;
+      const created = await createThread(threadTitle);
+      if(!created) return;
+      // currentThread set by selectThread inside createThread
+    }
+
+    try {
+      const res = await fetch(`/api/threads/${currentThread}/ask/`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type':'application/json', 'X-CSRFToken': csrftoken || ''},
+        body: JSON.stringify({ question: q })
+      });
+      if(!res.ok){
+        const txt = await res.text();
+        alert("Ask failed: " + res.status + " - " + txt);
+        return;
+      }
+      await selectThread(currentThread);
+      document.getElementById('question').value = '';
+    } catch(err){
+      console.error("askQuestion error", err);
+      alert("Error sending question.");
+    }
+  }
+
+  // ---------- ajax upload handler (single button) ----------
+  async function ajaxUpload(event){
+    event.preventDefault();
+    const fileEl = document.getElementById('fileInput');
+    const f = fileEl.files[0];
+    const status = document.getElementById('uploadStatus');
+
+    if(!f){
+      alert('Choose a file');
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append('title', document.getElementById('titleInput').value || 'na');
+    fd.append('file', f);
+
+    status.style.color = '#000';
+    status.innerText = 'Uploading...';
+
+    const btn = document.getElementById('uploadBtn');
+    btn.disabled = true;
+
+    try {
+      const res = await fetch('/api/documents/', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-CSRFToken': csrftoken || '' },
+        body: fd
+      });
+      if(!res.ok){
+        const txt = await res.text();
+        status.style.color = '#a00';
+        status.innerText = `Upload failed: ${res.status} - ${txt}`;
+        console.error("upload failed", res.status, txt);
+      } else {
+        status.style.color = '#080';
+        status.innerText = 'Upload OK';
+        // Optionally refresh threads or UI if the API returns something useful
+        // await loadThreads();
+      }
+    } catch(err){
+      console.error("ajaxUpload error", err);
+      status.style.color = '#a00';
+      status.innerText = 'Upload error — falling back to normal submit.';
+      // fallback: perform a normal form submit (which requires the csrf_token in the form)
+      // create a short delay so user sees the message, then submit
+      setTimeout(()=> {
+        document.getElementById('uploadForm').submit();
+      }, 500);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ---------- wire DOM handlers on load ----------
+  document.addEventListener('DOMContentLoaded', function(){
+    document.getElementById('askBtn').addEventListener('click', askQuestion);
+
+    // Upload: single-button behavior
+    document.getElementById('uploadBtn').addEventListener('click', ajaxUpload);
+    // Keep form submit as a real fallback for browsers without JS or in case AJAX fails.
+    document.getElementById('uploadForm').addEventListener('submit', function(e){
+      // If submit is triggered programmatically as fallback, let it proceed.
+      // If user presses Enter inside form, intercept and use AJAX instead:
+      e.preventDefault();
+      ajaxUpload(e);
+    });
+
+    // start by loading threads
+    loadThreads();
+  });
+  </script>
+</body>
+</html>

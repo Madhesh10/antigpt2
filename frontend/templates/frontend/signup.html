@@ -1,0 +1,14 @@
+﻿<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Signup - AntiGPT 2.0</title></head>
+<body>
+  <h1>Signup</h1>
+  <form method="POST">
+    {% csrf_token %}
+    <input name="username" placeholder="Username" required><br><br>
+    <input name="password" type="password" placeholder="Password" required><br><br>
+    <button type="submit">Create account</button>
+  </form>
+  <p>Already have an account? <a href="{% url 'login' %}">Login</a></p>
+</body>
+</html>
