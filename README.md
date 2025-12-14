@@ -167,12 +167,11 @@ Copy code
 
 ## 👨‍💻 Author
 
-**Madhesh SR**  
-Final-Year BE CSE Student  
-Specialization: IoT & Cybersecurity  
+**Madhesh SR**   
 Interest: AI, Cloud, DevOps  
 
 🔗 LinkedIn: *MADHESH SR*
+https://www.linkedin.com/in/madhesh-sr?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app
 
 ---
 
